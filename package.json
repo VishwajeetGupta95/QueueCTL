@@ -1,0 +1,29 @@
+{
+  "name": "queuectl",
+  "version": "0.1.0",
+  "description": "A production-ready CLI job queue foundation backed by SQLite.",
+  "main": "src/cli/index.js",
+  "bin": {
+    "queuectl": "src/cli/index.js"
+  },
+  "scripts": {
+    "start": "node src/cli/index.js",
+    "test": "node --test"
+  },
+  "keywords": [
+    "queue",
+    "cli",
+    "sqlite",
+    "jobs"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "better-sqlite3": "^11.9.1",
+    "commander": "^13.1.0",
+    "dotenv": "^16.4.7"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
