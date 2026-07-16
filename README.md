@@ -1,21 +1,50 @@
-# queuectl
+# QueueCTL
 
-`queuectl` is a production-oriented Node.js CLI job queue foundation. It persists jobs in SQLite, executes shell commands with worker processes, retries failures with exponential backoff, and exposes queue operations through a small CLI.
+QueueCTL is a lightweight, production-style CLI job queue built with Node.js and SQLite. It lets you enqueue jobs, run multiple workers, retry failed jobs with exponential backoff, and move permanently failed jobs to a Dead Letter Queue (DLQ).
+
+It is designed for local development, small deployments, and demos where a full message broker is unnecessary.
+
+## Features
+
+- Enqueue jobs from the command line
+- Persist jobs in SQLite across process restarts
+- Run multiple worker processes in parallel
+- Prevent duplicate processing of the same job
+- Retry failed jobs automatically with exponential backoff
+- Move exhausted retries to a DLQ
+- Support graceful worker shutdown
+- Configure retry defaults and backoff via CLI
+- Provide a simple CLI interface with helpful help text
+
+## Tech Stack
+
+- Node.js
+- SQLite via better-sqlite3
+- Commander.js for CLI parsing
 
 ## Installation
 
+Clone the repository and install dependencies:
+
 ```bash
+git clone <your-repo-url>
+cd QueueCTL
 npm install
-npm link # optional, exposes the queuectl binary locally
 ```
 
-Create a local environment file if you want to override defaults:
+Optional: expose the CLI globally so you can run `queuectl` from anywhere:
+
+```bash
+npm link
+```
+
+If you want to override defaults, create a local environment file:
 
 ```bash
 cp .env.example .env
 ```
 
-Common settings:
+Example environment values:
 
 ```dotenv
 QUEUECTL_DB_PATH=./queuectl.sqlite
@@ -25,19 +54,7 @@ QUEUECTL_WORKER_POLL_INTERVAL_MS=1000
 QUEUECTL_LOG_LEVEL=info
 ```
 
-## Architecture
-
-The project uses CommonJS JavaScript with clear runtime boundaries:
-
-- **CLI layer**: `commander` command registration and process-level error handling.
-- **Service layer**: queue and configuration business logic.
-- **Persistence layer**: `better-sqlite3` connection management, schema creation, and repositories.
-- **Worker layer**: long-running polling workers that claim and execute jobs.
-- **Utilities**: logging, output formatting, time helpers, and typed application errors.
-
-Jobs are claimed by transitioning from `pending` to `processing` in a SQLite transaction. Attempts are incremented when a worker claims a job, so a failed execution can decide whether to retry or move to the DLQ based on the updated attempt count.
-
-## Folder structure
+## Project Structure
 
 ```text
 src/
@@ -53,83 +70,170 @@ src/
 test/           Node test runner integration tests
 ```
 
-## Database schema
+## CLI Commands
 
-`jobs` table:
-
-| Column | Type | Description |
-| --- | --- | --- |
-| `id` | `TEXT PRIMARY KEY` | Caller-provided or generated job id |
-| `command` | `TEXT NOT NULL` | Shell command string or serialized command array |
-| `state` | `TEXT NOT NULL` | `pending`, `processing`, `completed`, `failed`, or `dead` |
-| `attempts` | `INTEGER NOT NULL` | Incremented when a worker claims a job |
-| `max_retries` | `INTEGER NOT NULL` | Maximum attempts before DLQ |
-| `created_at` | `TEXT NOT NULL` | ISO timestamp |
-| `updated_at` | `TEXT NOT NULL` | ISO timestamp |
-| `available_at` | `TEXT NOT NULL` | ISO timestamp used for scheduled jobs and retry backoff |
-
-`config` table:
-
-| Column | Type | Description |
-| --- | --- | --- |
-| `key` | `TEXT PRIMARY KEY` | Configuration key |
-| `value` | `TEXT NOT NULL` | Stored value |
-| `updated_at` | `TEXT NOT NULL` | ISO timestamp |
-
-## CLI commands
+### 1. Enqueue a job
 
 ```bash
-queuectl enqueue '<json>'
-queuectl list [--state pending|processing|completed|failed|dead]
-queuectl status
-queuectl worker start --count N
-queuectl worker stop
-queuectl config set max-retries VALUE
-queuectl config set backoff-base VALUE
-queuectl dlq list
-queuectl dlq retry <jobId>
+queuectl enqueue '{"id":"job1","command":"echo hello"}'
 ```
 
-## Usage examples
-
-Enqueue a job:
+You can also provide optional fields such as `max_retries`, `available_at`, or a custom id:
 
 ```bash
-queuectl enqueue '{"id":"hello","command":"echo hello"}'
+queuectl enqueue '{"id":"job2","command":"sleep 2","max_retries":5}'
 ```
 
-Enqueue a scheduled job using `available_at`:
+### 2. Start workers
+
+Start one worker:
 
 ```bash
-queuectl enqueue '{"id":"later","command":"echo later","available_at":"2030-01-01T00:00:00Z"}'
+queuectl worker start
 ```
 
-Start four worker loops in the current process:
+Start multiple workers:
 
 ```bash
-queuectl worker start --count 4
+queuectl worker start --count 3
 ```
 
-Request graceful worker shutdown:
+Start workers and stop automatically when the queue is empty:
+
+```bash
+queuectl worker start --count 1 --once
+```
+
+### 3. Stop workers gracefully
 
 ```bash
 queuectl worker stop
 ```
 
-Inspect queue state:
+### 4. View queue status
+
+Show counts by state:
 
 ```bash
 queuectl status
+```
+
+List jobs:
+
+```bash
+queuectl list
+```
+
+List jobs by state:
+
+```bash
 queuectl list --state pending
+queuectl list --state completed
+queuectl list --state dead
 ```
 
-## Retry flow
+### 5. Manage configuration
 
-1. A worker claims a pending job and increments `attempts`.
-2. The command exits with a non-zero code or fails to start.
-3. If `attempts < max_retries`, the job is moved back to `pending`.
-4. `available_at` is set to `now + backoff-base ^ attempts` seconds.
-5. The job becomes eligible again once `available_at` is in the past.
+Set the default max retries for new jobs:
+
+```bash
+queuectl config set max-retries 5
+```
+
+Set the backoff base:
+
+```bash
+queuectl config set backoff-base 3
+```
+
+### 6. Dead Letter Queue (DLQ)
+
+List dead-letter jobs:
+
+```bash
+queuectl dlq list
+```
+
+Retry a dead-letter job:
+
+```bash
+queuectl dlq retry job1
+```
+
+## Usage with npm
+
+You can run the CLI with `npm start` as well:
+
+```bash
+npm start
+```
+
+To pass a command through `npm start`, use `--`:
+
+```bash
+npm start -- enqueue '{"id":"job1","command":"echo hi"}'
+npm start -- worker start --count 2
+npm start -- worker start --once
+```
+
+## Quick Dummy Commands
+
+These commands are useful for smoke testing the application.
+
+### Enqueue examples
+
+```bash
+node src/cli/index.js enqueue '{"id":"job-echo","command":"echo hello"}'
+node src/cli/index.js enqueue '{"id":"job-sleep","command":"sleep 2"}'
+node src/cli/index.js enqueue '{"id":"job-fail","command":"exit 1"}'
+node src/cli/index.js enqueue '{"id":"job-bad","command":"nonexistentcmd"}'
+```
+
+### Worker examples
+
+```bash
+node src/cli/index.js worker start --count 3
+node src/cli/index.js worker start --count 1 --once
+node src/cli/index.js worker stop
+```
+
+### Status and inspection examples
+
+```bash
+node src/cli/index.js status
+node src/cli/index.js list --state pending
+node src/cli/index.js dlq list
+```
+
+### Config examples
+
+```bash
+node src/cli/index.js config set max-retries 5
+node src/cli/index.js config set backoff-base 3
+```
+
+## Job Lifecycle
+
+Each job moves through the following states:
+
+- `pending`: waiting to be picked up by a worker
+- `processing`: currently being executed
+- `completed`: executed successfully
+- `failed`: failed but can still be retried
+- `dead`: moved to the DLQ after retries are exhausted
+
+## Retry and Backoff Behavior
+
+When a job fails:
+
+1. The worker increments the job attempt count.
+2. If the job has remaining retry budget, it is moved back to `pending`.
+3. The `available_at` timestamp is updated using exponential backoff.
+4. The delay is calculated as:
+
+```text
+delay = backoff-base ^ attempts
+```
 
 Example with `backoff-base = 2`:
 
@@ -139,55 +243,23 @@ Example with `backoff-base = 2`:
 | 2 | 4 seconds |
 | 3 | 8 seconds |
 
-## DLQ flow
+If the retry budget is exhausted, the job is moved to the DLQ.
 
-When a failed job has `attempts >= max_retries`, it is moved to the `dead` state.
+## Persistence
 
-List DLQ jobs:
+QueueCTL stores job state and configuration in SQLite. This means jobs survive process restarts and remain available for future workers.
 
-```bash
-queuectl dlq list
-```
+## Worker Lifecycle
 
-Retry a DLQ job:
+Workers keep polling for pending jobs until one of the following happens:
 
-```bash
-queuectl dlq retry hello
-```
-
-Retrying a DLQ job moves it back to `pending` immediately. It preserves the original attempt count, which keeps retry history visible.
-
-## Worker lifecycle
-
-Workers continuously poll for jobs until one of the following happens:
-
-- `queuectl worker stop` stores a shutdown request in SQLite.
-- The process receives `SIGINT`.
-- The process receives `SIGTERM`.
-
-Shutdown is graceful: workers stop claiming new jobs, but current jobs are allowed to finish before the process exits.
-
-## Configuration
-
-Configuration is stored in SQLite so worker and CLI processes share the same values.
-
-Set default max retries for newly enqueued jobs:
-
-```bash
-queuectl config set max-retries 5
-```
-
-Set retry backoff base:
-
-```bash
-queuectl config set backoff-base 3
-```
-
-Environment variables provide startup defaults when config values are not present in SQLite.
+- A worker stop request is issued via `queuectl worker stop`
+- The process receives `SIGINT` or `SIGTERM`
+- The worker is launched with `--once` and the queue is empty
 
 ## Testing
 
-Run tests with:
+Run the test suite:
 
 ```bash
 npm test
@@ -195,37 +267,48 @@ npm test
 
 The test suite covers:
 
-- Enqueue
+- Enqueue behavior
 - Successful job execution
 - Failed job retry
-- Exponential backoff
+- Backoff behavior
 - DLQ movement
 - DLQ retry
-- Persistence after restart
+- Persistence across restarts
 - Multiple workers without duplicate execution
 
-## Assignment checklist
+## Assumptions and Trade-offs
 
-- ✓ Persistent storage
-- ✓ Multiple workers
-- ✓ Retry with exponential backoff
-- ✓ Dead Letter Queue
-- ✓ Graceful shutdown
-- ✓ Configuration management
-- ✓ Status command
-- ✓ List command
-- ✓ Clean architecture
+- Jobs run on the same host as the worker process.
+- SQLite is used for simplicity and durability in a local or small-scale environment.
+- The worker approach uses polling rather than event-driven notifications.
+- This project focuses on correctness and clarity over high-throughput distributed queue semantics.
 
-## Assumptions
+## Troubleshooting
 
-- Jobs execute shell commands on the same host as the worker process.
-- SQLite is sufficient for local durable queue semantics and lightweight multi-process coordination.
-- Job output streams to the worker process stdio for now.
-- `available_at` handles both scheduled jobs and retry delays.
+### Command not found
 
-## Trade-offs
+If `queuectl` is not recognized, try:
 
-- SQLite keeps deployment simple, but it is not intended to replace a distributed queue for very high throughput workloads.
-- The worker engine uses polling instead of notifications, which is simple and reliable but introduces a small configurable delay.
-- Attempts increment when a job is claimed, not after it fails. This makes retry and DLQ decisions deterministic after each execution.
-- DLQ retry preserves attempt count to keep history visible; operators can enqueue a new job if they want a clean retry budget.
+```bash
+npm link
+```
+
+Then verify:
+
+```bash
+queuectl --help
+```
+
+### JSON quoting errors
+
+On Linux/macOS shells, wrap JSON in single quotes:
+
+```bash
+queuectl enqueue '{"id":"job1","command":"echo hi"}'
+```
+
+On Windows PowerShell, use double quotes and escape inner quotes accordingly.
+
+## License
+
+MIT

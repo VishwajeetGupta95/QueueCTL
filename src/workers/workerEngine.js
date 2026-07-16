@@ -32,6 +32,7 @@ class WorkerEngine {
     this.count = options.count;
     this.pollIntervalMs = options.pollIntervalMs || config.workerPollIntervalMs;
     this.isStopping = false;
+    this.exitWhenIdle = Boolean(options.once);
     this.activeJobs = new Set();
   }
 
@@ -64,6 +65,11 @@ class WorkerEngine {
       const job = this.queue.getPendingJob();
 
       if (!job) {
+        if (this.exitWhenIdle) {
+          // Exit when there are no more jobs to process.
+          break;
+        }
+
         await sleep(this.pollIntervalMs);
         continue;
       }

@@ -41,11 +41,20 @@ Examples:
   return program;
 }
 
+function resolveCliArgs(argv = process.argv) {
+  if (!Array.isArray(argv) || argv.length <= 2) {
+    return [...argv, 'worker', 'start'];
+  }
+
+  return argv;
+}
+
 async function main(argv = process.argv) {
   const program = buildProgram();
+  const resolvedArgv = resolveCliArgs(argv);
 
   try {
-    await program.parseAsync(argv);
+    await program.parseAsync(resolvedArgv);
   } catch (error) {
     if (error instanceof CommanderError) {
       process.exitCode = error.exitCode;
@@ -70,4 +79,5 @@ if (require.main === module) {
 module.exports = {
   buildProgram,
   main,
+  resolveCliArgs,
 };

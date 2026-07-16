@@ -32,6 +32,14 @@ function createTempDatabase() {
   };
 }
 
+test('no-arg invocation defaults to worker start', () => {
+  const { resolveCliArgs } = require('../src/cli');
+
+  assert.deepEqual(resolveCliArgs(['node', 'queuectl']), ['node', 'queuectl', 'worker', 'start']);
+  assert.deepEqual(resolveCliArgs(['node', 'queuectl', 'status']), ['node', 'queuectl', 'status']);
+  assert.deepEqual(resolveCliArgs(['node', 'queuectl', '--help']), ['node', 'queuectl', '--help']);
+});
+
 test('enqueue persists a pending job', { skip: skipWithoutDependencies }, () => {
   const { db, cleanup } = createTempDatabase();
   const QueueService = require('../src/services/queueService');

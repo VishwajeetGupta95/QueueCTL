@@ -26,6 +26,7 @@ Examples:
     .command('start')
     .description('Start one or more workers that continuously process pending jobs.')
     .option('-c, --count <count>', 'Number of worker loops to start.', '1')
+    .option('--once', 'Run workers until the queue is empty, then exit.', false)
     .addHelpText('after', `
 Examples:
   $ queuectl worker start
@@ -33,7 +34,7 @@ Examples:
 `)
     .action(async (options) => {
       const count = parseWorkerCount(options.count);
-      const engine = new WorkerEngine(getDatabase(), { count });
+      const engine = new WorkerEngine(getDatabase(), { count, once: options.once });
       await engine.start();
     });
 
