@@ -5,6 +5,10 @@ function registerStatusCommand(program) {
   program
     .command('status')
     .description('Show queue status counts by state.')
+    .addHelpText('after', `
+Example:
+  $ queuectl status
+`)
     .action(() => {
       const queue = createQueueService();
       printJson(queue.getStatus());

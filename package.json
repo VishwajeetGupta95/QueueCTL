@@ -8,6 +8,7 @@
   },
   "scripts": {
     "start": "node src/cli/index.js",
+    "worker": "node src/cli/index.js worker start",
     "test": "node --test"
   },
   "keywords": [

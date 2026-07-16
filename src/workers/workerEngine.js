@@ -81,7 +81,18 @@ class WorkerEngine {
 
   async executeJob(workerId, job) {
     logger.info('Job started.', { workerId, jobId: job.id, attempt: job.attempts });
-    const result = await this.runShellCommand(job.command);
+
+    let result;
+    try {
+      result = await this.runShellCommand(job.command);
+    } catch (error) {
+      result = { exitCode: 1, error: error.message };
+      logger.error('Job command failed to start.', {
+        workerId,
+        jobId: job.id,
+        error: error.message,
+      });
+    }
 
     if (result.exitCode === 0) {
       this.queue.markCompleted(job.id);
@@ -94,6 +105,7 @@ class WorkerEngine {
       workerId,
       jobId: job.id,
       exitCode: result.exitCode,
+      error: result.error,
       state: updated?.state,
       nextAvailableAt: updated?.available_at,
     });

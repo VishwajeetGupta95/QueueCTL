@@ -5,7 +5,12 @@ const { printJson } = require('../utils/output');
 function registerDlqCommand(program) {
   const dlq = program
     .command('dlq')
-    .description('Inspect and retry dead-letter queue jobs.');
+    .description('Inspect and retry dead-letter queue jobs.')
+    .addHelpText('after', `
+Examples:
+  $ queuectl dlq list
+  $ queuectl dlq retry job-123
+`);
 
   dlq
     .command('list')

@@ -15,12 +15,22 @@ function parseWorkerCount(value) {
 function registerWorkerCommand(program) {
   const worker = program
     .command('worker')
-    .description('Manage queue workers.');
+    .description('Manage queue workers.')
+    .addHelpText('after', `
+Examples:
+  $ queuectl worker start --count 4
+  $ queuectl worker stop
+`);
 
   worker
     .command('start')
     .description('Start one or more workers that continuously process pending jobs.')
     .option('-c, --count <count>', 'Number of worker loops to start.', '1')
+    .addHelpText('after', `
+Examples:
+  $ queuectl worker start
+  $ queuectl worker start --count 4
+`)
     .action(async (options) => {
       const count = parseWorkerCount(options.count);
       const engine = new WorkerEngine(getDatabase(), { count });
@@ -30,6 +40,10 @@ function registerWorkerCommand(program) {
   worker
     .command('stop')
     .description('Request graceful shutdown for running workers.')
+    .addHelpText('after', `
+Example:
+  $ queuectl worker stop
+`)
     .action(() => {
       const service = new ConfigService(getDatabase());
       service.requestWorkerStop();
