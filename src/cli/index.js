@@ -3,6 +3,9 @@ const { Command } = require('commander');
 const registerEnqueueCommand = require('../commands/enqueue');
 const registerListCommand = require('../commands/list');
 const registerStatusCommand = require('../commands/status');
+const registerWorkerCommand = require('../commands/worker');
+const registerConfigCommand = require('../commands/config');
+const registerDlqCommand = require('../commands/dlq');
 const { closeDatabase } = require('../db');
 
 function buildProgram() {
@@ -17,6 +20,9 @@ function buildProgram() {
   registerEnqueueCommand(program);
   registerListCommand(program);
   registerStatusCommand(program);
+  registerWorkerCommand(program);
+  registerConfigCommand(program);
+  registerDlqCommand(program);
 
   return program;
 }

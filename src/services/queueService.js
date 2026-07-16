@@ -1,4 +1,5 @@
 const { JOB_STATES } = require('../queue/states');
+const { ConfigService, CONFIG_KEYS } = require('./configService');
 const { normalizeJob, validateState } = require('../queue/validation');
 const { DuplicateJobError, ValidationError } = require('../utils/errors');
 const { nowIso } = require('../utils/time');
@@ -6,10 +7,14 @@ const { nowIso } = require('../utils/time');
 class QueueService {
   constructor(db) {
     this.db = db;
+    this.config = new ConfigService(db);
   }
 
   enqueue(job) {
     const normalized = normalizeJob(job);
+    if (job.max_retries === undefined && job.maxRetries === undefined) {
+      normalized.max_retries = this.config.getNumber(CONFIG_KEYS.MAX_RETRIES);
+    }
     const timestamp = nowIso();
     const payload = {
       ...normalized,
@@ -53,13 +58,13 @@ class QueueService {
         return undefined;
       }
 
-      this.db.prepare(`
+      const result = this.db.prepare(`
         UPDATE jobs
         SET state = ?, attempts = attempts + 1, updated_at = ?
         WHERE id = ? AND state = ?
       `).run(JOB_STATES.PROCESSING, timestamp, job.id, JOB_STATES.PENDING);
 
-      return this.getJob(job.id);
+      return result.changes > 0 ? this.getJob(job.id) : undefined;
     });
 
     return transaction();
@@ -118,6 +123,40 @@ class QueueService {
 
   moveToDLQ(id) {
     return this.updateJob(id, { state: JOB_STATES.DEAD });
+  }
+
+
+  retryJob(id, backoffBase = this.config.getNumber(CONFIG_KEYS.BACKOFF_BASE)) {
+    const job = this.getJob(id);
+    if (!job) {
+      return undefined;
+    }
+
+    if (job.attempts >= job.max_retries) {
+      return this.moveToDLQ(id);
+    }
+
+    const delaySeconds = backoffBase ** job.attempts;
+    const availableAt = new Date(Date.now() + delaySeconds * 1000).toISOString();
+
+    return this.updateJob(id, {
+      state: JOB_STATES.PENDING,
+      available_at: availableAt,
+    });
+  }
+
+  retryDeadJob(id) {
+    const job = this.getJob(id);
+    if (!job) {
+      return undefined;
+    }
+    if (job.state !== JOB_STATES.DEAD) {
+      throw new ValidationError('Only dead jobs can be retried from the DLQ.');
+    }
+    return this.updateJob(id, {
+      state: JOB_STATES.PENDING,
+      available_at: nowIso(),
+    });
   }
 
   listJobs(state) {
