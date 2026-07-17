@@ -180,6 +180,31 @@ test('jobs persist after database restart', { skip: skipWithoutDependencies }, (
   }
 });
 
+test('worker engine exposes the active worker-to-job assignment', { skip: skipWithoutDependencies }, async () => {
+  const { db, cleanup } = createTempDatabase();
+  const QueueService = require('../src/services/queueService');
+  const WorkerEngine = require('../src/workers/workerEngine');
+
+  try {
+    const queue = new QueueService(db);
+    const job = queue.enqueue({ id: 'assignment-test', command: 'echo assignment', max_retries: 1 });
+    const engine = new WorkerEngine(db, { count: 1, pollIntervalMs: 1 });
+
+    let sawAssignment = false;
+    engine.runShellCommand = async () => {
+      sawAssignment = engine.getActiveAssignments()[1] === job.id;
+      return { exitCode: 0 };
+    };
+
+    await engine.executeJob(1, job);
+
+    assert.equal(sawAssignment, true);
+    assert.deepEqual(engine.getActiveAssignments(), {});
+  } finally {
+    cleanup();
+  }
+});
+
 test('multiple workers do not process the same job twice', { skip: skipWithoutDependencies }, async () => {
   const { db, cleanup } = createTempDatabase();
   const QueueService = require('../src/services/queueService');

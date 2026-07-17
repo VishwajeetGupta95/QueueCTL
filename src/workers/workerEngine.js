@@ -34,6 +34,7 @@ class WorkerEngine {
     this.isStopping = false;
     this.exitWhenIdle = Boolean(options.once);
     this.activeJobs = new Set();
+    this.activeAssignments = new Map();
   }
 
   async start() {
@@ -75,9 +76,11 @@ class WorkerEngine {
       }
 
       this.activeJobs.add(job.id);
+      this.setActiveAssignment(workerId, job);
       try {
         await this.executeJob(workerId, job);
       } finally {
+        this.clearActiveAssignment(workerId, job.id);
         this.activeJobs.delete(job.id);
       }
     }
@@ -85,7 +88,34 @@ class WorkerEngine {
     logger.info('Worker loop exiting.', { workerId });
   }
 
+  setActiveAssignment(workerId, job) {
+    this.activeAssignments.set(workerId, job.id);
+    this.logAssignment(workerId, job);
+  }
+
+  clearActiveAssignment(workerId, jobId) {
+    if (this.activeAssignments.get(workerId) === jobId) {
+      this.activeAssignments.delete(workerId);
+    }
+  }
+
+  logAssignment(workerId, job) {
+    const commandPreview = String(job.command).length > 80
+      ? `${String(job.command).slice(0, 77)}...`
+      : String(job.command);
+
+    console.log(`[queuectl] worker ${workerId} -> job ${job.id}`);
+    console.log(`[queuectl] worker ${workerId} executing: ${commandPreview}`);
+    logger.info('Worker assigned to job.', { workerId, jobId: job.id, command: commandPreview });
+  }
+
+  getActiveAssignments() {
+    return Object.fromEntries(this.activeAssignments.entries());
+  }
+
   async executeJob(workerId, job) {
+    this.activeJobs.add(job.id);
+    this.setActiveAssignment(workerId, job);
     logger.info('Job started.', { workerId, jobId: job.id, attempt: job.attempts });
 
     let result;
@@ -98,6 +128,9 @@ class WorkerEngine {
         jobId: job.id,
         error: error.message,
       });
+    } finally {
+      this.clearActiveAssignment(workerId, job.id);
+      this.activeJobs.delete(job.id);
     }
 
     if (result.exitCode === 0) {
